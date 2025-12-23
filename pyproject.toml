@@ -1,0 +1,40 @@
+[project]
+name = "bgpframe"
+version = "0.1.0"
+description = "A high-performance BGP MRT parser library for Python."
+readme = "README.md"
+authors = [
+    { name = "Taeyun Jang", email = "taeyun16@pm.me" }
+]
+requires-python = ">=3.14"
+dependencies = []
+
+[project.optional-dependencies]
+polars = [
+    "polars>=1.36.1",
+]
+
+[tool.maturin]
+module-name = "bgpframe._core"
+python-packages = ["bgpframe"]
+python-source = "src"
+
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
+
+[tool.pyrefly]
+project-includes = [
+    "**/*.py*",
+    "**/*.ipynb",
+]
+
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[dependency-groups]
+dev = [
+    "maturin>=1.10.2",
+    "pyrefly>=0.46.0",
+    "ruff>=0.14.10",
+]
