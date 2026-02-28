@@ -5,3 +5,17 @@ def mrt_to_parquet(
     limit: int | None = ...,
     batch_size: int | None = ...,
 ) -> int: ...
+def parquet_contains_ip(
+    input: str,
+    ip: str,
+    output: str | None = ...,
+    limit: int | None = ...,
+) -> int: ...
+def ip_to_parts(ip: str) -> tuple[int, int | None, int | None, int | None]: ...
+def v6_prefix_contains(
+    prefix_hi: int | None,
+    prefix_lo: int | None,
+    prefix_len: int | None,
+    ip_hi: int,
+    ip_lo: int,
+) -> bool: ...
