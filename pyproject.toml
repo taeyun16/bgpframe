@@ -1,6 +1,6 @@
 [project]
 name = "bgpframe"
-version = "0.1.0"
+version = "0.2.0"
 description = "High-performance Rust + Python toolkit for parsing BGP MRT data into Parquet and querying prefixes/AS paths."
 readme = { file = "README.md", content-type = "text/markdown" }
 authors = [
