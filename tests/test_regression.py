@@ -158,6 +158,169 @@ class RegressionTests(unittest.TestCase):
             out_df = pl.read_parquet(out_path)
             self.assertEqual(len(out_df), 1)
 
+    def test_parquet_filter_updates(self) -> None:
+        v6_a_hi, v6_a_lo = _v6_parts("2001:db8::")
+        v6_b_hi, v6_b_lo = _v6_parts("2001:4860::")
+
+        df = pl.DataFrame(
+            {
+                "elem_type": [1, 0, 1, 1, 1],
+                "prefix_ver": [4, 4, 4, 6, 6],
+                "prefix_v4": [
+                    _to_u32("10.0.0.0"),
+                    _to_u32("10.1.0.0"),
+                    _to_u32("192.168.0.0"),
+                    None,
+                    None,
+                ],
+                "prefix_end_v4": [
+                    _to_u32("10.255.255.255"),
+                    _to_u32("10.1.255.255"),
+                    _to_u32("192.168.255.255"),
+                    None,
+                    None,
+                ],
+                "prefix_v6_hi": [None, None, None, v6_a_hi, v6_b_hi],
+                "prefix_v6_lo": [None, None, None, v6_a_lo, v6_b_lo],
+                "prefix_len": [8, 16, 16, 32, 32],
+                "origin_asn": [64500, 64501, 64500, 64500, None],
+                "as_path": [
+                    [64512, 64500],
+                    [64513, 64501],
+                    [64514, 64500],
+                    [64515, 64500],
+                    [],
+                ],
+                "as_path_len": [2, 2, 2, 2, 0],
+            },
+            schema={
+                "elem_type": pl.UInt32,
+                "prefix_ver": pl.UInt32,
+                "prefix_v4": pl.UInt32,
+                "prefix_end_v4": pl.UInt32,
+                "prefix_v6_hi": pl.UInt64,
+                "prefix_v6_lo": pl.UInt64,
+                "prefix_len": pl.UInt32,
+                "origin_asn": pl.UInt32,
+                "as_path": pl.List(pl.UInt32),
+                "as_path_len": pl.UInt32,
+            },
+        )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            input_path = tmp / "input.parquet"
+            output_path = tmp / "out.parquet"
+            df.write_parquet(input_path)
+
+            count_v4 = bgpframe.parquet_filter_updates(
+                str(input_path),
+                contains_ip="10.1.1.1",
+                elem_type="announce",
+                origin_asn=64500,
+                as_path_contains=64500,
+                min_as_path_len=2,
+                max_as_path_len=2,
+            )
+            self.assertEqual(count_v4, 1)
+
+            count_v6 = bgpframe.parquet_filter_updates(
+                str(input_path),
+                exact_prefix="2001:db8::1234/32",
+            )
+            self.assertEqual(count_v6, 1)
+
+            count_limited = bgpframe.parquet_filter_updates(
+                str(input_path),
+                output=str(output_path),
+                limit=1,
+                elem_type="announce",
+            )
+            self.assertEqual(count_limited, 1)
+            self.assertEqual(len(pl.read_parquet(output_path)), 1)
+
+            with self.assertRaises(RuntimeError):
+                bgpframe.parquet_filter_updates(
+                    str(input_path),
+                    min_as_path_len=3,
+                    max_as_path_len=2,
+                )
+
+    def test_bgp_convenience_filters(self) -> None:
+        v6_a_hi, v6_a_lo = _v6_parts("2001:db8::")
+        v6_b_hi, v6_b_lo = _v6_parts("2001:4860::")
+
+        df = pl.DataFrame(
+            {
+                "elem_type": [1, 0, 1, 1],
+                "prefix_ver": [4, 4, 6, 6],
+                "prefix_v4": [
+                    _to_u32("10.0.0.0"),
+                    _to_u32("10.1.0.0"),
+                    None,
+                    None,
+                ],
+                "prefix_end_v4": [
+                    _to_u32("10.255.255.255"),
+                    _to_u32("10.1.255.255"),
+                    None,
+                    None,
+                ],
+                "prefix_v6_hi": [None, None, v6_a_hi, v6_b_hi],
+                "prefix_v6_lo": [None, None, v6_a_lo, v6_b_lo],
+                "prefix_len": [8, 16, 32, 32],
+                "origin_asn": [64500, 64501, None, 64500],
+                "as_path": [
+                    [64512, 64500],
+                    [64513, 64501],
+                    [],
+                    [64514, 64515, 64500],
+                ],
+                "as_path_len": [2, 2, 0, 3],
+            },
+            schema={
+                "elem_type": pl.UInt32,
+                "prefix_ver": pl.UInt32,
+                "prefix_v4": pl.UInt32,
+                "prefix_end_v4": pl.UInt32,
+                "prefix_v6_hi": pl.UInt64,
+                "prefix_v6_lo": pl.UInt64,
+                "prefix_len": pl.UInt32,
+                "origin_asn": pl.UInt32,
+                "as_path": pl.List(pl.UInt32),
+                "as_path_len": pl.UInt32,
+            },
+        )
+
+        self.assertEqual(len(df.filter(bgpframe.announce_expr())), 3)
+        self.assertEqual(len(df.filter(bgpframe.withdraw_expr())), 1)
+        self.assertEqual(len(df.filter(bgpframe.origin_asn_expr(64500))), 2)
+        self.assertEqual(len(df.filter(bgpframe.as_path_contains_expr(64515))), 1)
+        self.assertEqual(len(df.filter(bgpframe.as_path_len_between_expr(min_len=3))), 1)
+        self.assertEqual(len(df.filter(bgpframe.prefix_exact_expr("10.23.9.9/8"))), 1)
+        self.assertEqual(len(df.filter(bgpframe.prefix_exact_expr("2001:db8::1234/32"))), 1)
+
+        res = bgpframe.filter_bgp_updates(
+            df,
+            contains_ip="10.1.1.1",
+            elem_type="withdraw",
+        )
+        self.assertEqual(len(res), 1)
+
+        lazy_res = bgpframe.filter_bgp_updates(
+            df.lazy(),
+            origin_asn=64500,
+            as_path_contains=64500,
+            min_as_path_len=2,
+            elem_type="announce",
+        ).collect()
+        self.assertEqual(len(lazy_res), 2)
+
+        with self.assertRaises(ValueError):
+            bgpframe.as_path_len_between_expr()
+        with self.assertRaises(ValueError):
+            bgpframe.filter_bgp_updates(df, elem_type="unknown")
+
 
 if __name__ == "__main__":
     unittest.main()

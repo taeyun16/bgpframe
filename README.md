@@ -9,10 +9,10 @@
 [![Issues](https://img.shields.io/github/issues/taeyun16/bgpframe?style=for-the-badge)](https://github.com/taeyun16/bgpframe/issues)
 [![Last Commit](https://img.shields.io/github/last-commit/taeyun16/bgpframe?style=for-the-badge)](https://github.com/taeyun16/bgpframe/commits/main)
 [![Top Language](https://img.shields.io/github/languages/top/taeyun16/bgpframe?style=for-the-badge)](https://github.com/taeyun16/bgpframe)
-[![Rust tests](https://img.shields.io/badge/Rust%20tests-5%20passed-2ea44f?style=for-the-badge)](#테스트--품질-게이트)
-[![Python tests](https://img.shields.io/badge/Python%20tests-4%20passed-2ea44f?style=for-the-badge)](#테스트--품질-게이트)
+[![Rust tests](https://img.shields.io/badge/Rust%20tests-7%20passed-2ea44f?style=for-the-badge)](#테스트--품질-게이트)
+[![Python tests](https://img.shields.io/badge/Python%20tests-6%20passed-2ea44f?style=for-the-badge)](#테스트--품질-게이트)
 [![Doctest](https://img.shields.io/badge/Doctest-4%20passed-2ea44f?style=for-the-badge)](#테스트--품질-게이트)
-[![Coverage](https://img.shields.io/badge/Coverage-92%25-2ea44f?style=for-the-badge)](#테스트--품질-게이트)
+[![Coverage](https://img.shields.io/badge/Coverage-93%25-2ea44f?style=for-the-badge)](#테스트--품질-게이트)
 [![Type Check](https://img.shields.io/badge/Type%20check-pyrefly%200%20errors-2ea44f?style=for-the-badge)](#테스트--품질-게이트)
 
 Rust 기반 MRT(BGP) 파서 + Parquet 처리 라이브러리입니다.  
@@ -22,7 +22,8 @@ Python에서 `maturin`으로 바로 개발 빌드해서 사용할 수 있고, pr
 
 - 고속 파싱: `bgpkit-parser` + Rust 구현으로 MRT를 Parquet로 변환
 - 메모리 재사용: 배치 플러시 시 버퍼 스왑 방식으로 할당/복사 비용 절감
-- Python 친화 API: `contains_prefix_expr`, `v6_contains_expr`, `filter_contains`
+- Rust 스캔 필터: `parquet_filter_updates`로 대용량 parquet 직접 필터링/저장
+- Python 친화 API: prefix/ip 포함 + BGP 전용 필터(`announce`, `origin`, `as_path`)
 - 타입 힌트 지원: `typed .pyi` 포함 (`_core.pyi`, `polars_utils.pyi`, `__init__.pyi`)
 
 ## 빠른 시작
@@ -91,15 +92,68 @@ matched = bgpframe.parquet_contains_ip(
 print("matched rows:", matched)
 ```
 
+### 4) BGP 전용 편의 필터 조합
+
+```python
+import bgpframe
+import polars as pl
+
+df = pl.read_parquet("rrc00_latest.parquet")
+
+# announce 이면서 origin AS 15169, AS_PATH에 3356 포함, 길이 2~5
+res = bgpframe.filter_bgp_updates(
+    df,
+    elem_type="announce",
+    origin_asn=15169,
+    as_path_contains=3356,
+    min_as_path_len=2,
+    max_as_path_len=5,
+)
+
+# exact prefix 매칭 (strict=False라 host bit가 있어도 네트워크로 정규화)
+exact = df.filter(bgpframe.prefix_exact_expr("2001:4860:4860::8888/32"))
+```
+
+### 5) Rust 고속 스캔 필터 (파일 -> 파일)
+
+```python
+import bgpframe
+
+matched = bgpframe.parquet_filter_updates(
+    "rrc00_latest.parquet",
+    output="rrc00_latest_updates_filtered.parquet",
+    contains_ip="8.8.8.8",
+    elem_type="announce",
+    origin_asn=15169,
+    as_path_contains=3356,
+    min_as_path_len=2,
+    max_as_path_len=8,
+    limit=50_000,
+)
+print("matched rows:", matched)
+```
+
+동일 코드는 `example/parquet_filter_updates.py`에서 바로 실행할 수 있습니다.
+
+## BGP 데이터 특성 기반 추천 쿼리
+
+- 이벤트 타입 분리: `announce_expr()`, `withdraw_expr()`
+- 경로 기원 분석: `origin_asn_expr(asn)`
+- 트랜짓/업스트림 추적: `as_path_contains_expr(asn)`
+- 정책/위험 징후 탐색: `as_path_len_between_expr(min_len=..., max_len=...)`
+- prefix 단위 고정 비교: `prefix_exact_expr("x.x.x.x/len")`
+- 복합 필터 1회 적용: `filter_bgp_updates(...)`
+- parquet 파일 직접 처리: `parquet_filter_updates(...)`
+
 ## 테스트 / 품질 게이트
 
 아래 결과는 **2026-03-01(Asia/Seoul) 로컬 실행 기준**입니다.
 
-- Rust unit test: `5 passed`
+- Rust unit test: `7 passed`
 - Rust doc test: `0 failed`
-- Python regression test (`unittest`): `4 passed`
+- Python regression test (`unittest`): `6 passed`
 - Python doctest: `4 passed`
-- Coverage (Python): `92%`
+- Coverage (Python): `93%`
 - Type check (`pyrefly`): `0 errors`
 
 실행 명령:

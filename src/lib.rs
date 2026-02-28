@@ -42,6 +42,16 @@ enum ParsedIp {
     V6(u64, u64),
 }
 
+enum ParsedPrefix {
+    V4 { start: u32, prefix_len: u8 },
+    V6 { hi: u64, lo: u64, prefix_len: u8 },
+}
+
+enum ElemTypeFilter {
+    Announce,
+    Withdraw,
+}
+
 fn parse_ip(ip: &str) -> PyResult<ParsedIp> {
     let addr = ip
         .parse::<IpAddr>()
@@ -53,6 +63,77 @@ fn parse_ip(ip: &str) -> PyResult<ParsedIp> {
             Ok(ParsedIp::V6(hi, lo))
         }
     }
+}
+
+fn parse_prefix(prefix: &str) -> PyResult<ParsedPrefix> {
+    let (addr_str, len_str) = prefix.split_once('/').ok_or_else(|| {
+        PyRuntimeError::new_err(format!(
+            "invalid prefix {prefix}: expected CIDR format like 10.0.0.0/8"
+        ))
+    })?;
+    let prefix_len = len_str.parse::<u8>().map_err(|err| {
+        PyRuntimeError::new_err(format!(
+            "invalid prefix {prefix}: invalid prefix length: {err}"
+        ))
+    })?;
+
+    match parse_ip(addr_str)? {
+        ParsedIp::V4(v4) => {
+            if prefix_len > 32 {
+                return Err(PyRuntimeError::new_err(format!(
+                    "invalid prefix {prefix}: IPv4 prefix_len must be <= 32"
+                )));
+            }
+            let mask = if prefix_len == 0 {
+                0
+            } else {
+                u32::MAX << (32 - prefix_len as u32)
+            };
+            Ok(ParsedPrefix::V4 {
+                start: v4 & mask,
+                prefix_len,
+            })
+        }
+        ParsedIp::V6(hi, lo) => {
+            if prefix_len > 128 {
+                return Err(PyRuntimeError::new_err(format!(
+                    "invalid prefix {prefix}: IPv6 prefix_len must be <= 128"
+                )));
+            }
+            let value = ((hi as u128) << 64) | (lo as u128);
+            let mask = if prefix_len == 0 {
+                0
+            } else {
+                u128::MAX << (128 - prefix_len as u32)
+            };
+            let network = value & mask;
+            Ok(ParsedPrefix::V6 {
+                hi: (network >> 64) as u64,
+                lo: network as u64,
+                prefix_len,
+            })
+        }
+    }
+}
+
+fn parse_elem_type_filter(value: &str) -> PyResult<ElemTypeFilter> {
+    let normalized = value.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "announce" | "announcement" | "a" | "1" => Ok(ElemTypeFilter::Announce),
+        "withdraw" | "withdrawal" | "w" | "0" => Ok(ElemTypeFilter::Withdraw),
+        _ => Err(PyRuntimeError::new_err(format!(
+            "elem_type must be announce/withdraw, got: {value}"
+        ))),
+    }
+}
+
+fn as_path_contains_at(as_paths: &ListChunked, idx: usize, asn: u32) -> bool {
+    if let Some(series) = as_paths.get_as_series(idx) {
+        if let Ok(values) = series.u32() {
+            return values.into_iter().flatten().any(|v| v == asn);
+        }
+    }
+    false
 }
 
 fn prefix_contains_v6(
@@ -561,6 +642,340 @@ fn parquet_contains_ip(
     Ok(filtered.height())
 }
 
+#[pyfunction]
+#[pyo3(signature = (
+    input,
+    output=None,
+    limit=None,
+    contains_ip=None,
+    exact_prefix=None,
+    origin_asn=None,
+    as_path_contains=None,
+    min_as_path_len=None,
+    max_as_path_len=None,
+    elem_type=None
+))]
+fn parquet_filter_updates(
+    input: &str,
+    output: Option<&str>,
+    limit: Option<usize>,
+    contains_ip: Option<&str>,
+    exact_prefix: Option<&str>,
+    origin_asn: Option<u32>,
+    as_path_contains: Option<u32>,
+    min_as_path_len: Option<u32>,
+    max_as_path_len: Option<u32>,
+    elem_type: Option<&str>,
+) -> PyResult<usize> {
+    if let (Some(min_len), Some(max_len)) = (min_as_path_len, max_as_path_len) {
+        if min_len > max_len {
+            return Err(PyRuntimeError::new_err(format!(
+                "invalid as_path_len range: min_as_path_len ({min_len}) > max_as_path_len ({max_len})"
+            )));
+        }
+    }
+
+    let contains_target = contains_ip.map(parse_ip).transpose()?;
+    let exact_target = exact_prefix.map(parse_prefix).transpose()?;
+    let elem_target = elem_type.map(parse_elem_type_filter).transpose()?;
+
+    let file =
+        File::open(input).map_err(|err| PyRuntimeError::new_err(format!("{input}: {err}")))?;
+    let df = ParquetReader::new(file)
+        .finish()
+        .map_err(|err| PyRuntimeError::new_err(format!("parquet read failed: {err}")))?;
+
+    let elem_types = if elem_target.is_some() {
+        Some(
+            df.column("elem_type")
+                .map_err(|err| PyRuntimeError::new_err(format!("missing column elem_type: {err}")))?
+                .u32()
+                .map_err(|err| {
+                    PyRuntimeError::new_err(format!("invalid column elem_type: {err}"))
+                })?,
+        )
+    } else {
+        None
+    };
+    let origin_asns = if origin_asn.is_some() {
+        Some(
+            df.column("origin_asn")
+                .map_err(|err| {
+                    PyRuntimeError::new_err(format!("missing column origin_asn: {err}"))
+                })?
+                .u32()
+                .map_err(|err| {
+                    PyRuntimeError::new_err(format!("invalid column origin_asn: {err}"))
+                })?,
+        )
+    } else {
+        None
+    };
+    let as_paths = if as_path_contains.is_some() {
+        Some(
+            df.column("as_path")
+                .map_err(|err| PyRuntimeError::new_err(format!("missing column as_path: {err}")))?
+                .list()
+                .map_err(|err| PyRuntimeError::new_err(format!("invalid column as_path: {err}")))?,
+        )
+    } else {
+        None
+    };
+    let as_path_lens = if min_as_path_len.is_some() || max_as_path_len.is_some() {
+        Some(
+            df.column("as_path_len")
+                .map_err(|err| {
+                    PyRuntimeError::new_err(format!("missing column as_path_len: {err}"))
+                })?
+                .u32()
+                .map_err(|err| {
+                    PyRuntimeError::new_err(format!("invalid column as_path_len: {err}"))
+                })?,
+        )
+    } else {
+        None
+    };
+
+    let need_prefix = contains_target.is_some() || exact_target.is_some();
+    let prefix_vers = if need_prefix {
+        Some(
+            df.column("prefix_ver")
+                .map_err(|err| {
+                    PyRuntimeError::new_err(format!("missing column prefix_ver: {err}"))
+                })?
+                .u32()
+                .map_err(|err| {
+                    PyRuntimeError::new_err(format!("invalid column prefix_ver: {err}"))
+                })?,
+        )
+    } else {
+        None
+    };
+    let prefix_v4s = if need_prefix {
+        Some(
+            df.column("prefix_v4")
+                .map_err(|err| PyRuntimeError::new_err(format!("missing column prefix_v4: {err}")))?
+                .u32()
+                .map_err(|err| {
+                    PyRuntimeError::new_err(format!("invalid column prefix_v4: {err}"))
+                })?,
+        )
+    } else {
+        None
+    };
+    let prefix_end_v4s = if contains_target.is_some() {
+        Some(
+            df.column("prefix_end_v4")
+                .map_err(|err| {
+                    PyRuntimeError::new_err(format!("missing column prefix_end_v4: {err}"))
+                })?
+                .u32()
+                .map_err(|err| {
+                    PyRuntimeError::new_err(format!("invalid column prefix_end_v4: {err}"))
+                })?,
+        )
+    } else {
+        None
+    };
+    let prefix_v6_his = if need_prefix {
+        Some(
+            df.column("prefix_v6_hi")
+                .map_err(|err| {
+                    PyRuntimeError::new_err(format!("missing column prefix_v6_hi: {err}"))
+                })?
+                .u64()
+                .map_err(|err| {
+                    PyRuntimeError::new_err(format!("invalid column prefix_v6_hi: {err}"))
+                })?,
+        )
+    } else {
+        None
+    };
+    let prefix_v6_los = if need_prefix {
+        Some(
+            df.column("prefix_v6_lo")
+                .map_err(|err| {
+                    PyRuntimeError::new_err(format!("missing column prefix_v6_lo: {err}"))
+                })?
+                .u64()
+                .map_err(|err| {
+                    PyRuntimeError::new_err(format!("invalid column prefix_v6_lo: {err}"))
+                })?,
+        )
+    } else {
+        None
+    };
+    let prefix_lens = if need_prefix {
+        Some(
+            df.column("prefix_len")
+                .map_err(|err| {
+                    PyRuntimeError::new_err(format!("missing column prefix_len: {err}"))
+                })?
+                .u32()
+                .map_err(|err| {
+                    PyRuntimeError::new_err(format!("invalid column prefix_len: {err}"))
+                })?,
+        )
+    } else {
+        None
+    };
+
+    let mut mask = Vec::with_capacity(df.height());
+    for idx in 0..df.height() {
+        let mut matched = true;
+
+        if let (Some(filter), Some(values)) = (&elem_target, elem_types) {
+            matched = match (filter, values.get(idx)) {
+                (ElemTypeFilter::Announce, Some(1)) => true,
+                (ElemTypeFilter::Withdraw, Some(0)) => true,
+                _ => false,
+            };
+        }
+        if !matched {
+            mask.push(false);
+            continue;
+        }
+
+        if let (Some(target), Some(values)) = (origin_asn, origin_asns) {
+            matched = values.get(idx) == Some(target);
+        }
+        if !matched {
+            mask.push(false);
+            continue;
+        }
+
+        if let (Some(target), Some(values)) = (as_path_contains, as_paths) {
+            matched = as_path_contains_at(values, idx, target);
+        }
+        if !matched {
+            mask.push(false);
+            continue;
+        }
+
+        if let Some(values) = as_path_lens {
+            if let Some(min_len) = min_as_path_len {
+                matched = values.get(idx).is_some_and(|len| len >= min_len);
+            }
+            if matched {
+                if let Some(max_len) = max_as_path_len {
+                    matched = values.get(idx).is_some_and(|len| len <= max_len);
+                }
+            }
+        }
+        if !matched {
+            mask.push(false);
+            continue;
+        }
+
+        if let Some(target) = &contains_target {
+            if let (
+                Some(prefix_vers),
+                Some(prefix_v4s),
+                Some(prefix_end_v4s),
+                Some(prefix_v6_his),
+                Some(prefix_v6_los),
+                Some(prefix_lens),
+            ) = (
+                prefix_vers,
+                prefix_v4s,
+                prefix_end_v4s,
+                prefix_v6_his,
+                prefix_v6_los,
+                prefix_lens,
+            ) {
+                matched = match target {
+                    ParsedIp::V4(ip_v4) => {
+                        if prefix_vers.get(idx) != Some(4) {
+                            false
+                        } else {
+                            match (prefix_v4s.get(idx), prefix_end_v4s.get(idx)) {
+                                (Some(start), Some(end)) => start <= *ip_v4 && *ip_v4 <= end,
+                                _ => false,
+                            }
+                        }
+                    }
+                    ParsedIp::V6(ip_hi, ip_lo) => {
+                        if prefix_vers.get(idx) != Some(6) {
+                            false
+                        } else {
+                            match (
+                                prefix_v6_his.get(idx),
+                                prefix_v6_los.get(idx),
+                                prefix_lens.get(idx),
+                            ) {
+                                (Some(prefix_hi), Some(prefix_lo), Some(prefix_len)) => {
+                                    prefix_contains_v6(
+                                        prefix_hi, prefix_lo, prefix_len, *ip_hi, *ip_lo,
+                                    )
+                                }
+                                _ => false,
+                            }
+                        }
+                    }
+                };
+            }
+        }
+        if !matched {
+            mask.push(false);
+            continue;
+        }
+
+        if let Some(target) = &exact_target {
+            if let (
+                Some(prefix_vers),
+                Some(prefix_v4s),
+                Some(prefix_v6_his),
+                Some(prefix_v6_los),
+                Some(prefix_lens),
+            ) = (
+                prefix_vers,
+                prefix_v4s,
+                prefix_v6_his,
+                prefix_v6_los,
+                prefix_lens,
+            ) {
+                matched = match target {
+                    ParsedPrefix::V4 { start, prefix_len } => {
+                        prefix_vers.get(idx) == Some(4)
+                            && prefix_v4s.get(idx) == Some(*start)
+                            && prefix_lens.get(idx) == Some(*prefix_len as u32)
+                    }
+                    ParsedPrefix::V6 { hi, lo, prefix_len } => {
+                        prefix_vers.get(idx) == Some(6)
+                            && prefix_v6_his.get(idx) == Some(*hi)
+                            && prefix_v6_los.get(idx) == Some(*lo)
+                            && prefix_lens.get(idx) == Some(*prefix_len as u32)
+                    }
+                };
+            }
+        }
+
+        mask.push(matched);
+    }
+
+    let mask_ca = BooleanChunked::from_slice("matched".into(), &mask);
+    let mut filtered = df
+        .filter(&mask_ca)
+        .map_err(|err| PyRuntimeError::new_err(format!("parquet filter failed: {err}")))?;
+    if let Some(max) = limit {
+        filtered = filtered.head(Some(max));
+    }
+
+    if let Some(output_path) = output {
+        let out_file = File::create(output_path)
+            .map_err(|err| PyRuntimeError::new_err(format!("{output_path}: {err}")))?;
+        let zstd_level =
+            ZstdLevel::try_new(22).map_err(|err| PyRuntimeError::new_err(err.to_string()))?;
+        let writer = ParquetWriter::new(out_file)
+            .with_compression(ParquetCompression::Zstd(Some(zstd_level)));
+        writer
+            .finish(&mut filtered)
+            .map_err(|err| PyRuntimeError::new_err(format!("parquet write failed: {err}")))?;
+    }
+
+    Ok(filtered.height())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -666,6 +1081,43 @@ mod tests {
             ip_lo
         ));
     }
+
+    #[test]
+    fn parse_prefix_normalizes_host_bits() {
+        match parse_prefix("10.23.9.9/8").expect("valid v4 prefix") {
+            ParsedPrefix::V4 { start, prefix_len } => {
+                assert_eq!(start, u32::from(Ipv4Addr::new(10, 0, 0, 0)));
+                assert_eq!(prefix_len, 8);
+            }
+            ParsedPrefix::V6 { .. } => panic!("expected v4 prefix"),
+        }
+
+        match parse_prefix("2001:db8::1234/32").expect("valid v6 prefix") {
+            ParsedPrefix::V6 { hi, lo, prefix_len } => {
+                let (expect_hi, expect_lo) = v6_parts("2001:db8::");
+                assert_eq!(hi, expect_hi);
+                assert_eq!(lo, expect_lo);
+                assert_eq!(prefix_len, 32);
+            }
+            ParsedPrefix::V4 { .. } => panic!("expected v6 prefix"),
+        }
+
+        assert!(parse_prefix("10.0.0.0").is_err());
+        assert!(parse_prefix("10.0.0.0/33").is_err());
+    }
+
+    #[test]
+    fn parse_elem_type_filter_supports_aliases() {
+        assert!(matches!(
+            parse_elem_type_filter("announce"),
+            Ok(ElemTypeFilter::Announce)
+        ));
+        assert!(matches!(
+            parse_elem_type_filter("w"),
+            Ok(ElemTypeFilter::Withdraw)
+        ));
+        assert!(parse_elem_type_filter("unknown").is_err());
+    }
 }
 
 /// A Python module implemented in Rust. The name of this module must match
@@ -676,6 +1128,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(hello_from_bin, m)?)?;
     m.add_function(wrap_pyfunction!(mrt_to_parquet, m)?)?;
     m.add_function(wrap_pyfunction!(parquet_contains_ip, m)?)?;
+    m.add_function(wrap_pyfunction!(parquet_filter_updates, m)?)?;
     m.add_function(wrap_pyfunction!(ip_to_parts, m)?)?;
     m.add_function(wrap_pyfunction!(v6_prefix_contains, m)?)?;
     Ok(())

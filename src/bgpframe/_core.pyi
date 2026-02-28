@@ -16,6 +16,18 @@ def parquet_contains_ip(
     output: str | None = ...,
     limit: int | None = ...,
 ) -> int: ...
+def parquet_filter_updates(
+    input: str,
+    output: str | None = ...,
+    limit: int | None = ...,
+    contains_ip: str | None = ...,
+    exact_prefix: str | None = ...,
+    origin_asn: int | None = ...,
+    as_path_contains: int | None = ...,
+    min_as_path_len: int | None = ...,
+    max_as_path_len: int | None = ...,
+    elem_type: str | None = ...,
+) -> int: ...
 def ip_to_parts(ip: str) -> tuple[IpVersion, int | None, int | None, int | None]: ...
 def v6_prefix_contains(
     prefix_hi: int | None,
