@@ -1,7 +1,7 @@
 # bgpframe
 
 [![Rust 2024 Edition](https://img.shields.io/badge/Rust-2024%20Edition-000000?style=for-the-badge&logo=rust)](https://www.rust-lang.org/)
-[![Python 3.14+](https://img.shields.io/badge/Python-3.14%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![PyO3 0.27](https://img.shields.io/badge/PyO3-0.27-F9AB00?style=for-the-badge)](https://pyo3.rs/)
 [![Polars 1.36+](https://img.shields.io/badge/Polars-1.36%2B-0F172A?style=for-the-badge)](https://pola.rs/)
 [![GitHub Repo](https://img.shields.io/badge/GitHub-taeyun16%2Fbgpframe-181717?style=for-the-badge&logo=github)](https://github.com/taeyun16/bgpframe)
@@ -29,12 +29,32 @@ You can build and use it directly from Python with `maturin`, and write concise 
 - Python-friendly API: prefix/IP containment + BGP-specific filters (`announce`, `origin`, `as_path`).
 - Typed API: includes `.pyi` stubs (`_core.pyi`, `polars_utils.pyi`, `__init__.pyi`).
 
-## Quick Start
+## Installation
+
+Install from PyPI:
+
+```bash
+pip install bgpframe
+```
+
+If you use the Polars helper expressions:
+
+```bash
+pip install "bgpframe[polars]"
+```
+
+Using `uv`:
+
+```bash
+uv add bgpframe
+# or
+uv add "bgpframe[polars]"
+```
 
 ### Requirements
 
 - Rust stable toolchain
-- Python 3.14+
+- Python 3.12+
 - `uv`
 - `maturin`
 
@@ -164,7 +184,7 @@ Run commands:
 ```bash
 # One-time workaround if cargo test has macOS + Homebrew Python framework link issue
 mkdir -p /tmp/Python3.framework/Versions/3.9
-ln -sf /opt/homebrew/Frameworks/Python.framework/Versions/3.14/Python /tmp/Python3.framework/Versions/3.9/Python3
+ln -sf /opt/homebrew/Frameworks/Python.framework/Versions/Current/Python /tmp/Python3.framework/Versions/3.9/Python3
 
 # Rust tests
 DYLD_FRAMEWORK_PATH=/tmp cargo test --lib
@@ -183,6 +203,29 @@ uv run coverage report
 # Type check
 uv run pyrefly check
 ```
+
+## CI/CD and PyPI Publishing
+
+- CI workflow: `.github/workflows/ci.yml`
+  - Trigger: push to `main`, pull requests
+  - Runs: Rust tests, Python regression tests, doctest, type checks
+- Release workflow: `.github/workflows/publish-pypi.yml`
+  - Trigger: GitHub Release (`published`) or manual dispatch
+  - Builds: wheels (`ubuntu/macos/windows`) + sdist
+  - Publishes: PyPI via Trusted Publishing (OIDC)
+
+### Required setup for PyPI release
+
+1. Configure a PyPI Trusted Publisher for this project.
+2. In PyPI Trusted Publisher settings, use:
+   - Owner: `taeyun16`
+   - Repository: `bgpframe`
+   - Workflow filename: `publish-pypi.yml`
+   - Environment name: `pypi`
+3. In GitHub, create environment `pypi` (Settings -> Environments).
+4. Create a GitHub Release (for example tag `v0.1.0`) to trigger publish.
+
+With Trusted Publishing, you do not need a long-lived `PYPI_API_TOKEN` secret.
 
 ## Schema Summary
 

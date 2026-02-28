@@ -1,13 +1,46 @@
 [project]
 name = "bgpframe"
 version = "0.1.0"
-description = "A high-performance BGP MRT parser library for Python."
-readme = "README.md"
+description = "High-performance Rust + Python toolkit for parsing BGP MRT data into Parquet and querying prefixes/AS paths."
+readme = { file = "README.md", content-type = "text/markdown" }
 authors = [
     { name = "Taeyun Jang", email = "taeyun16@pm.me" }
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = []
+keywords = [
+    "bgp",
+    "mrt",
+    "routing",
+    "parquet",
+    "rust",
+    "python",
+    "pyo3",
+    "polars",
+    "asn",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Topic :: Internet",
+    "Topic :: System :: Networking",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+]
+
+[project.urls]
+Homepage = "https://github.com/taeyun16/bgpframe"
+Repository = "https://github.com/taeyun16/bgpframe"
+Issues = "https://github.com/taeyun16/bgpframe/issues"
+Documentation = "https://github.com/taeyun16/bgpframe#readme"
+Changelog = "https://github.com/taeyun16/bgpframe/releases"
 
 [project.optional-dependencies]
 polars = [

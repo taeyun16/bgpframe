@@ -4,7 +4,7 @@
 English version: [`../README.md`](../README.md)
 
 [![Rust 2024 Edition](https://img.shields.io/badge/Rust-2024%20Edition-000000?style=for-the-badge&logo=rust)](https://www.rust-lang.org/)
-[![Python 3.14+](https://img.shields.io/badge/Python-3.14%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![PyO3 0.27](https://img.shields.io/badge/PyO3-0.27-F9AB00?style=for-the-badge)](https://pyo3.rs/)
 [![Polars 1.36+](https://img.shields.io/badge/Polars-1.36%2B-0F172A?style=for-the-badge)](https://pola.rs/)
 [![GitHub Repo](https://img.shields.io/badge/GitHub-taeyun16%2Fbgpframe-181717?style=for-the-badge&logo=github)](https://github.com/taeyun16/bgpframe)
@@ -29,12 +29,32 @@ Python에서 `maturin`으로 바로 개발 빌드해서 사용할 수 있고, pr
 - Python 친화 API: prefix/ip 포함 + BGP 전용 필터(`announce`, `origin`, `as_path`)
 - 타입 힌트 지원: `typed .pyi` 포함 (`_core.pyi`, `polars_utils.pyi`, `__init__.pyi`)
 
-## 빠른 시작
+## 설치
+
+PyPI에서 설치:
+
+```bash
+pip install bgpframe
+```
+
+Polars 헬퍼 표현식을 함께 사용할 경우:
+
+```bash
+pip install "bgpframe[polars]"
+```
+
+`uv` 사용 시:
+
+```bash
+uv add bgpframe
+# 또는
+uv add "bgpframe[polars]"
+```
 
 ### 요구 사항
 
 - Rust stable toolchain
-- Python 3.14+
+- Python 3.12+
 - `uv`
 - `maturin`
 
@@ -164,7 +184,7 @@ print("matched rows:", matched)
 ```bash
 # macOS + Homebrew Python 환경에서 cargo test 링크 에러가 있으면 1회 준비
 mkdir -p /tmp/Python3.framework/Versions/3.9
-ln -sf /opt/homebrew/Frameworks/Python.framework/Versions/3.14/Python /tmp/Python3.framework/Versions/3.9/Python3
+ln -sf /opt/homebrew/Frameworks/Python.framework/Versions/Current/Python /tmp/Python3.framework/Versions/3.9/Python3
 
 # Rust tests
 DYLD_FRAMEWORK_PATH=/tmp cargo test --lib
@@ -183,6 +203,29 @@ uv run coverage report
 # Type check
 uv run pyrefly check
 ```
+
+## CI/CD 및 PyPI 배포
+
+- CI 워크플로: `.github/workflows/ci.yml`
+  - 트리거: `main` 브랜치 push, pull request
+  - 실행: Rust 테스트, Python 회귀 테스트, doctest, 타입체크
+- 릴리즈 워크플로: `.github/workflows/publish-pypi.yml`
+  - 트리거: GitHub Release(`published`) 또는 수동 실행
+  - 빌드: wheels(`ubuntu/macos/windows`) + sdist
+  - 배포: PyPI Trusted Publishing(OIDC)
+
+### PyPI 배포를 위한 필수 설정
+
+1. PyPI에서 이 프로젝트의 Trusted Publisher를 설정합니다.
+2. PyPI Trusted Publisher 설정 값:
+   - Owner: `taeyun16`
+   - Repository: `bgpframe`
+   - Workflow filename: `publish-pypi.yml`
+   - Environment name: `pypi`
+3. GitHub 저장소 Settings -> Environments에서 `pypi` 환경을 생성합니다.
+4. GitHub Release(예: `v0.1.0`)를 생성하면 publish가 트리거됩니다.
+
+Trusted Publishing을 사용하면 장기 `PYPI_API_TOKEN` 시크릿이 필수는 아닙니다.
 
 ## 스키마 요약
 
