@@ -43,7 +43,7 @@ jobs:
         run: uv sync --locked --group dev --no-install-project
 
       - name: Build extension module
-        run: uv run -- maturin develop
+        run: .venv/bin/maturin develop
 
       - name: Rust unit tests
         run: cargo test --lib
