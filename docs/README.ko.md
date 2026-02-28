@@ -1,5 +1,8 @@
 # bgpframe
 
+한글 문서입니다.  
+English version: [`../README.md`](../README.md)
+
 [![Rust 2024 Edition](https://img.shields.io/badge/Rust-2024%20Edition-000000?style=for-the-badge&logo=rust)](https://www.rust-lang.org/)
 [![Python 3.14+](https://img.shields.io/badge/Python-3.14%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![PyO3 0.27](https://img.shields.io/badge/PyO3-0.27-F9AB00?style=for-the-badge)](https://pyo3.rs/)
@@ -9,36 +12,33 @@
 [![Project Scope](https://img.shields.io/badge/Scope-BGP%20MRT%20%2B%20Parquet-0052cc?style=for-the-badge)](https://github.com/taeyun16/bgpframe)
 [![Package Type](https://img.shields.io/badge/Package-Python%20%2B%20Rust-2ea44f?style=for-the-badge)](https://github.com/taeyun16/bgpframe)
 [![Status](https://img.shields.io/badge/Status-Active-2ea44f?style=for-the-badge)](https://github.com/taeyun16/bgpframe)
-[![Rust tests](https://img.shields.io/badge/Rust%20tests-7%20passed-2ea44f?style=for-the-badge)](#testing--quality-gates)
-[![Python tests](https://img.shields.io/badge/Python%20tests-6%20passed-2ea44f?style=for-the-badge)](#testing--quality-gates)
-[![Doctest](https://img.shields.io/badge/Doctest-4%20passed-2ea44f?style=for-the-badge)](#testing--quality-gates)
-[![Coverage](https://img.shields.io/badge/Coverage-93%25-2ea44f?style=for-the-badge)](#testing--quality-gates)
-[![Type Check](https://img.shields.io/badge/Type%20check-pyrefly%200%20errors-2ea44f?style=for-the-badge)](#testing--quality-gates)
+[![Rust tests](https://img.shields.io/badge/Rust%20tests-7%20passed-2ea44f?style=for-the-badge)](#테스트--품질-게이트)
+[![Python tests](https://img.shields.io/badge/Python%20tests-6%20passed-2ea44f?style=for-the-badge)](#테스트--품질-게이트)
+[![Doctest](https://img.shields.io/badge/Doctest-4%20passed-2ea44f?style=for-the-badge)](#테스트--품질-게이트)
+[![Coverage](https://img.shields.io/badge/Coverage-93%25-2ea44f?style=for-the-badge)](#테스트--품질-게이트)
+[![Type Check](https://img.shields.io/badge/Type%20check-pyrefly%200%20errors-2ea44f?style=for-the-badge)](#테스트--품질-게이트)
 
-English documentation.
-Korean version: [`docs/README.ko.md`](docs/README.ko.md)
+Rust 기반 MRT(BGP) 파서 + Parquet 처리 라이브러리입니다.  
+Python에서 `maturin`으로 바로 개발 빌드해서 사용할 수 있고, prefix 포함 쿼리를 Polars Expr로 간결하게 작성할 수 있습니다.
 
-A Rust-based MRT (BGP) parsing + Parquet processing library.
-You can build and use it directly from Python with `maturin`, and write concise prefix containment queries with Polars expressions.
+## 핵심 포인트
 
-## Key Highlights
+- 고속 파싱: `bgpkit-parser` + Rust 구현으로 MRT를 Parquet로 변환
+- 메모리 재사용: 배치 플러시 시 버퍼 스왑 방식으로 할당/복사 비용 절감
+- Rust 스캔 필터: `parquet_filter_updates`로 대용량 parquet 직접 필터링/저장
+- Python 친화 API: prefix/ip 포함 + BGP 전용 필터(`announce`, `origin`, `as_path`)
+- 타입 힌트 지원: `typed .pyi` 포함 (`_core.pyi`, `polars_utils.pyi`, `__init__.pyi`)
 
-- Fast parsing: converts MRT to Parquet using `bgpkit-parser` + Rust implementation.
-- Memory reuse: reduces allocation/copy overhead with batch buffer swap during flush.
-- Rust scan filter: `parquet_filter_updates` for fast direct filtering/writing on large Parquet files.
-- Python-friendly API: prefix/IP containment + BGP-specific filters (`announce`, `origin`, `as_path`).
-- Typed API: includes `.pyi` stubs (`_core.pyi`, `polars_utils.pyi`, `__init__.pyi`).
+## 빠른 시작
 
-## Quick Start
-
-### Requirements
+### 요구 사항
 
 - Rust stable toolchain
 - Python 3.14+
 - `uv`
 - `maturin`
 
-### Development Build
+### 개발 빌드
 
 ```bash
 uv venv
@@ -48,14 +48,14 @@ maturin develop
 python -c "import bgpframe; print(bgpframe.hello())"
 ```
 
-Run without activating the virtual environment:
+가상환경 활성화 없이 실행하려면:
 
 ```bash
 uv run -- maturin develop
 uv run python -c "import bgpframe; print(bgpframe.hello())"
 ```
 
-## Examples
+## 사용 예시
 
 ### 1) MRT -> Parquet
 
@@ -65,12 +65,12 @@ import bgpframe
 bgpframe.mrt_to_parquet(
     "https://data.ris.ripe.net/rrc00/latest-update.gz",
     "rrc00_latest.parquet",
-    limit=200_000,      # optional
-    batch_size=100_000, # optional
+    limit=200_000,      # 선택
+    batch_size=100_000, # 선택
 )
 ```
 
-### 2) Prefix containment query (IPv4/IPv6)
+### 2) Prefix 포함 쿼리 (IPv4/IPv6 공통)
 
 ```python
 import bgpframe
@@ -81,7 +81,7 @@ res = df.filter(bgpframe.contains_prefix_expr("8.8.8.8"))
 print(res.head())
 ```
 
-### 3) Filter large Parquet and write output
+### 3) 대용량 parquet 직접 필터링 후 저장
 
 ```python
 import bgpframe
@@ -90,12 +90,12 @@ matched = bgpframe.parquet_contains_ip(
     "rrc00_latest.parquet",
     "2001:4860:4860::8888",
     output="rrc00_latest_match_google_dns_v6.parquet",
-    limit=100_000,  # optional
+    limit=100_000,  # 선택
 )
 print("matched rows:", matched)
 ```
 
-### 4) Combined BGP convenience filters
+### 4) BGP 전용 편의 필터 조합
 
 ```python
 import bgpframe
@@ -103,7 +103,7 @@ import polars as pl
 
 df = pl.read_parquet("rrc00_latest.parquet")
 
-# announce + origin AS 15169 + AS_PATH includes 3356 + path length 2..5
+# announce 이면서 origin AS 15169, AS_PATH에 3356 포함, 길이 2~5
 res = bgpframe.filter_bgp_updates(
     df,
     elem_type="announce",
@@ -113,11 +113,11 @@ res = bgpframe.filter_bgp_updates(
     max_as_path_len=5,
 )
 
-# exact prefix match (host bits are normalized with strict=False behavior)
+# exact prefix 매칭 (strict=False라 host bit가 있어도 네트워크로 정규화)
 exact = df.filter(bgpframe.prefix_exact_expr("2001:4860:4860::8888/32"))
 ```
 
-### 5) Rust high-speed scan filter (file -> file)
+### 5) Rust 고속 스캔 필터 (파일 -> 파일)
 
 ```python
 import bgpframe
@@ -136,33 +136,33 @@ matched = bgpframe.parquet_filter_updates(
 print("matched rows:", matched)
 ```
 
-The same code is available at `example/parquet_filter_updates.py`.
+동일 코드는 `example/parquet_filter_updates.py`에서 바로 실행할 수 있습니다.
 
-## Recommended Query Patterns for BGP Data
+## BGP 데이터 특성 기반 추천 쿼리
 
-- Split event types: `announce_expr()`, `withdraw_expr()`
-- Analyze route origin: `origin_asn_expr(asn)`
-- Track transit/upstream ASN: `as_path_contains_expr(asn)`
-- Find policy/risk signals: `as_path_len_between_expr(min_len=..., max_len=...)`
-- Exact prefix comparisons: `prefix_exact_expr("x.x.x.x/len")`
-- Apply combined filters once: `filter_bgp_updates(...)`
-- Direct Parquet processing: `parquet_filter_updates(...)`
+- 이벤트 타입 분리: `announce_expr()`, `withdraw_expr()`
+- 경로 기원 분석: `origin_asn_expr(asn)`
+- 트랜짓/업스트림 추적: `as_path_contains_expr(asn)`
+- 정책/위험 징후 탐색: `as_path_len_between_expr(min_len=..., max_len=...)`
+- prefix 단위 고정 비교: `prefix_exact_expr("x.x.x.x/len")`
+- 복합 필터 1회 적용: `filter_bgp_updates(...)`
+- parquet 파일 직접 처리: `parquet_filter_updates(...)`
 
-## Testing / Quality Gates
+## 테스트 / 품질 게이트
 
-Results below are from local runs on **2026-03-01 (Asia/Seoul)**.
+아래 결과는 **2026-03-01(Asia/Seoul) 로컬 실행 기준**입니다.
 
-- Rust unit tests: `7 passed`
-- Rust doc tests: `0 failed`
-- Python regression tests (`unittest`): `6 passed`
+- Rust unit test: `7 passed`
+- Rust doc test: `0 failed`
+- Python regression test (`unittest`): `6 passed`
 - Python doctest: `4 passed`
 - Coverage (Python): `93%`
 - Type check (`pyrefly`): `0 errors`
 
-Run commands:
+실행 명령:
 
 ```bash
-# One-time workaround if cargo test has macOS + Homebrew Python framework link issue
+# macOS + Homebrew Python 환경에서 cargo test 링크 에러가 있으면 1회 준비
 mkdir -p /tmp/Python3.framework/Versions/3.9
 ln -sf /opt/homebrew/Frameworks/Python.framework/Versions/3.14/Python /tmp/Python3.framework/Versions/3.9/Python3
 
@@ -184,32 +184,32 @@ uv run coverage report
 uv run pyrefly check
 ```
 
-## Schema Summary
+## 스키마 요약
 
-The schema is normalized to numeric/list columns and minimizes string fields.
+문자열을 최소화하고 정수/리스트 중심으로 정규화합니다.
 
-| Column | Type | Description |
+| 컬럼 | 타입 | 설명 |
 |---|---|---|
-| `timestamp` | i64 | Unix timestamp in seconds |
+| `timestamp` | i64 | 초 단위 UNIX 타임스탬프 |
 | `elem_type` | u32 | announce=1, withdraw=0 |
 | `peer_ip_ver` | u32 | 4 or 6 |
-| `peer_ip_v4` | u32? | Present only for IPv4 peers |
-| `peer_ip_v6_hi` | u64? | Upper 64 bits of IPv6 |
-| `peer_ip_v6_lo` | u64? | Lower 64 bits of IPv6 |
+| `peer_ip_v4` | u32? | IPv4일 때만 값 존재 |
+| `peer_ip_v6_hi` | u64? | IPv6 상위 64bit |
+| `peer_ip_v6_lo` | u64? | IPv6 하위 64bit |
 | `peer_asn` | u32 | Peer ASN |
 | `prefix_ver` | u32 | 4 or 6 |
 | `prefix_v4` | u32? | IPv4 prefix |
-| `prefix_v6_hi` | u64? | Upper 64 bits of IPv6 |
-| `prefix_v6_lo` | u64? | Lower 64 bits of IPv6 |
-| `prefix_len` | u32 | Prefix length |
-| `prefix_end_v4` | u32? | IPv4 range end (query acceleration) |
+| `prefix_v6_hi` | u64? | IPv6 상위 64bit |
+| `prefix_v6_lo` | u64? | IPv6 하위 64bit |
+| `prefix_len` | u32 | Prefix 길이 |
+| `prefix_end_v4` | u32? | IPv4 범위 끝 (쿼리 가속) |
 | `next_hop_ver` | u32? | 4 or 6 |
 | `next_hop_v4` | u32? | IPv4 next hop |
-| `next_hop_v6_hi` | u64? | Upper 64 bits of IPv6 |
-| `next_hop_v6_lo` | u64? | Lower 64 bits of IPv6 |
-| `as_path` | list<u32> | Flattened AS_PATH |
-| `as_path_len` | u32 | Route length |
-| `has_as_set` | bool | Contains AS_SET/CONFED_SET |
-| `origin_asn` | u32? | Present only for a single origin ASN |
+| `next_hop_v6_hi` | u64? | IPv6 상위 64bit |
+| `next_hop_v6_lo` | u64? | IPv6 하위 64bit |
+| `as_path` | list<u32> | AS_PATH 평탄화 리스트 |
+| `as_path_len` | u32 | route_len 기준 길이 |
+| `has_as_set` | bool | AS_SET/CONFED_SET 포함 여부 |
+| `origin_asn` | u32? | 단일 origin일 때만 채움 |
 | `local_pref` | u32? | local-pref |
 | `med` | u32? | MED |
