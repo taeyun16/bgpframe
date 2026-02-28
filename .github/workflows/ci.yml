@@ -36,8 +36,11 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Validate lockfile
+        run: uv lock --check
+
       - name: Sync dev dependencies (without local package build)
-        run: uv sync --group dev --no-install-project
+        run: uv sync --locked --group dev --no-install-project
 
       - name: Build extension module
         run: uv run -- maturin develop
