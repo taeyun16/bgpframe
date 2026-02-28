@@ -1,3 +1,13 @@
+"""Polars expression helpers for prefix containment queries.
+
+Doctest:
+    >>> from bgpframe.polars_utils import ip_to_parts
+    >>> ip_to_parts("8.8.8.8")
+    (4, 134744072, None, None)
+    >>> ip_to_parts("2001:db8::1")[0]
+    6
+"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -17,6 +27,13 @@ def _polars() -> Any:
 
 
 def ip_to_parts(ip: str) -> tuple[int, int | None, int | None, int | None]:
+    """Parse IP string into normalized parts.
+
+    Returns `(version, v4, v6_hi, v6_lo)` where only one address family is populated.
+
+    >>> ip_to_parts("1.1.1.1")
+    (4, 16843009, None, None)
+    """
     return _ip_to_parts_core(ip)
 
 

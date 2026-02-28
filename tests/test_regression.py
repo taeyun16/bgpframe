@@ -4,14 +4,19 @@ import ipaddress
 import tempfile
 import unittest
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, cast
 
 import bgpframe
 
-try:
+if TYPE_CHECKING:
     import polars as pl
-except ImportError:  # pragma: no cover
-    pl = None
+else:  # pragma: no cover
+    try:
+        import polars as pl
+    except ImportError:
+        pl = cast(Any, None)
 
+HAS_POLARS = pl is not None
 
 def _to_u32(ip: str) -> int:
     return int(ipaddress.IPv4Address(ip))
@@ -22,7 +27,7 @@ def _v6_parts(ip: str) -> tuple[int, int]:
     return (value >> 64) & ((1 << 64) - 1), value & ((1 << 64) - 1)
 
 
-@unittest.skipIf(pl is None, "polars is required for regression tests")
+@unittest.skipIf(not HAS_POLARS, "polars is required for regression tests")
 class RegressionTests(unittest.TestCase):
     def test_ip_to_parts(self) -> None:
         self.assertEqual(bgpframe.ip_to_parts("8.8.8.8"), (4, _to_u32("8.8.8.8"), None, None))

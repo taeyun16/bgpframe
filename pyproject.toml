@@ -18,6 +18,7 @@ polars = [
 module-name = "bgpframe._core"
 python-packages = ["bgpframe"]
 python-source = "src"
+features = ["extension-module"]
 
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.rs" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }]
@@ -34,7 +35,9 @@ build-backend = "maturin"
 
 [dependency-groups]
 dev = [
+    "coverage>=7.11.0",
     "maturin>=1.10.2",
+    "polars>=1.36.1",
     "pyrefly>=0.46.0",
     "ruff>=0.14.10",
 ]

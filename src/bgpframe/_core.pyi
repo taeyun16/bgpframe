@@ -1,3 +1,8 @@
+from typing import Literal
+
+IpVersion = Literal[4, 6]
+
+
 def hello_from_bin() -> str: ...
 def mrt_to_parquet(
     input: str,
@@ -11,7 +16,7 @@ def parquet_contains_ip(
     output: str | None = ...,
     limit: int | None = ...,
 ) -> int: ...
-def ip_to_parts(ip: str) -> tuple[int, int | None, int | None, int | None]: ...
+def ip_to_parts(ip: str) -> tuple[IpVersion, int | None, int | None, int | None]: ...
 def v6_prefix_contains(
     prefix_hi: int | None,
     prefix_lo: int | None,

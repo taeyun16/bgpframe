@@ -561,6 +561,113 @@ fn parquet_contains_ip(
     Ok(filtered.height())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{Ipv4Addr, Ipv6Addr};
+
+    fn v6_parts(ip: &str) -> (u64, u64) {
+        let parsed = ip.parse::<Ipv6Addr>().expect("valid ipv6 literal");
+        ipv6_to_u64s(parsed)
+    }
+
+    #[test]
+    fn prefix_end_v4_computes_expected_range_end() {
+        let start = u32::from(Ipv4Addr::new(10, 1, 2, 0));
+        let end = prefix_end_v4(start, 24);
+        assert_eq!(end, u32::from(Ipv4Addr::new(10, 1, 2, 255)));
+
+        let host = u32::from(Ipv4Addr::new(192, 0, 2, 9));
+        assert_eq!(prefix_end_v4(host, 32), host);
+        assert_eq!(prefix_end_v4(0, 0), u32::MAX);
+    }
+
+    #[test]
+    fn split_ip_normalizes_v4_and_v6() {
+        let v4 = split_ip(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)));
+        assert_eq!(
+            v4,
+            (4, Some(u32::from(Ipv4Addr::new(8, 8, 8, 8))), None, None)
+        );
+
+        let (v6_hi, v6_lo) = v6_parts("2001:db8::1");
+        let v6 = split_ip(IpAddr::V6("2001:db8::1".parse().unwrap()));
+        assert_eq!(v6, (6, None, Some(v6_hi), Some(v6_lo)));
+    }
+
+    #[test]
+    fn parse_ip_and_parts_handle_valid_and_invalid_input() {
+        match parse_ip("1.1.1.1").expect("valid ipv4") {
+            ParsedIp::V4(v4) => assert_eq!(v4, u32::from(Ipv4Addr::new(1, 1, 1, 1))),
+            ParsedIp::V6(_, _) => panic!("expected ipv4"),
+        }
+
+        let parts = ip_to_parts("2001:db8::1").expect("valid ipv6");
+        assert_eq!(parts.0, 6);
+        assert!(parts.1.is_none());
+        assert!(parts.2.is_some());
+        assert!(parts.3.is_some());
+
+        assert!(parse_ip("not_an_ip").is_err());
+        assert!(ip_to_parts("still_not_ip").is_err());
+    }
+
+    #[test]
+    fn prefix_contains_v6_matches_prefix_logic() {
+        let (prefix_hi, prefix_lo) = v6_parts("2804:41f0::");
+        let (in_hi, in_lo) = v6_parts("2804:41f0::1234");
+        let (out_hi, out_lo) = v6_parts("2001:db8::1");
+
+        assert!(prefix_contains_v6(prefix_hi, prefix_lo, 32, in_hi, in_lo));
+        assert!(!prefix_contains_v6(
+            prefix_hi, prefix_lo, 32, out_hi, out_lo
+        ));
+
+        let (exact_hi, exact_lo) = v6_parts("2001:db8::abcd");
+        assert!(prefix_contains_v6(
+            exact_hi, exact_lo, 128, exact_hi, exact_lo
+        ));
+        assert!(!prefix_contains_v6(exact_hi, exact_lo, 128, in_hi, in_lo));
+
+        assert!(prefix_contains_v6(prefix_hi, prefix_lo, 0, out_hi, out_lo));
+    }
+
+    #[test]
+    fn v6_prefix_contains_handles_null_inputs() {
+        let (ip_hi, ip_lo) = v6_parts("2804:41f0::1");
+        let (prefix_hi, prefix_lo) = v6_parts("2804:41f0::");
+
+        assert!(v6_prefix_contains(
+            Some(prefix_hi),
+            Some(prefix_lo),
+            Some(32),
+            ip_hi,
+            ip_lo
+        ));
+        assert!(!v6_prefix_contains(
+            None,
+            Some(prefix_lo),
+            Some(32),
+            ip_hi,
+            ip_lo
+        ));
+        assert!(!v6_prefix_contains(
+            Some(prefix_hi),
+            None,
+            Some(32),
+            ip_hi,
+            ip_lo
+        ));
+        assert!(!v6_prefix_contains(
+            Some(prefix_hi),
+            Some(prefix_lo),
+            None,
+            ip_hi,
+            ip_lo
+        ));
+    }
+}
+
 /// A Python module implemented in Rust. The name of this module must match
 /// the `lib.name` setting in the `Cargo.toml`, else Python will not be able to
 /// import the module.
