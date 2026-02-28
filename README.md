@@ -209,8 +209,11 @@ uv run pyrefly check
 - CI workflow: `.github/workflows/ci.yml`
   - Trigger: push to `main`, pull requests
   - Runs: Rust tests, Python regression tests, doctest, type checks
+- Automated release workflow: `.github/workflows/release-please.yml`
+  - Trigger: push to `main` (or manual dispatch)
+  - Creates/updates a Release PR, updates versions (`pyproject.toml`, `Cargo.toml`), and publishes a GitHub Release
 - Release workflow: `.github/workflows/publish-pypi.yml`
-  - Trigger: GitHub Release (`published`) or manual dispatch
+  - Trigger: GitHub Release (`published`/`released`) or manual dispatch
   - Builds: wheels (`ubuntu/macos/windows`) + sdist
   - Publishes: PyPI via Trusted Publishing (OIDC)
 
@@ -226,6 +229,14 @@ uv run pyrefly check
 4. Create a GitHub Release (for example tag `v0.1.0`) to trigger publish.
 
 With Trusted Publishing, you do not need a long-lived `PYPI_API_TOKEN` secret.
+
+### Automatic release flow
+
+1. Merge commits into `main` (use Conventional Commit prefixes like `feat:`, `fix:`, `docs:`).
+2. `release-please` opens/updates a Release PR with version/changelog changes.
+3. Merge the Release PR.
+4. `release-please` creates a GitHub Release.
+5. `publish-pypi.yml` runs and uploads artifacts to PyPI.
 
 ## Schema Summary
 

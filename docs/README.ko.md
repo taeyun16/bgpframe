@@ -209,8 +209,11 @@ uv run pyrefly check
 - CI 워크플로: `.github/workflows/ci.yml`
   - 트리거: `main` 브랜치 push, pull request
   - 실행: Rust 테스트, Python 회귀 테스트, doctest, 타입체크
+- 자동 릴리즈 워크플로: `.github/workflows/release-please.yml`
+  - 트리거: `main` 브랜치 push(또는 수동 실행)
+  - Release PR 생성/업데이트, 버전(`pyproject.toml`, `Cargo.toml`) 갱신, GitHub Release 발행
 - 릴리즈 워크플로: `.github/workflows/publish-pypi.yml`
-  - 트리거: GitHub Release(`published`) 또는 수동 실행
+  - 트리거: GitHub Release(`published`/`released`) 또는 수동 실행
   - 빌드: wheels(`ubuntu/macos/windows`) + sdist
   - 배포: PyPI Trusted Publishing(OIDC)
 
@@ -226,6 +229,14 @@ uv run pyrefly check
 4. GitHub Release(예: `v0.1.0`)를 생성하면 publish가 트리거됩니다.
 
 Trusted Publishing을 사용하면 장기 `PYPI_API_TOKEN` 시크릿이 필수는 아닙니다.
+
+### 자동 릴리즈 흐름
+
+1. `main`에 커밋을 머지합니다(권장: `feat:`, `fix:`, `docs:` 같은 Conventional Commit prefix 사용).
+2. `release-please`가 Release PR을 생성/업데이트합니다.
+3. Release PR을 머지합니다.
+4. `release-please`가 GitHub Release를 발행합니다.
+5. `publish-pypi.yml`이 실행되어 PyPI에 아티팩트를 업로드합니다.
 
 ## 스키마 요약
 
